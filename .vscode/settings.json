@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^node -c index\\.html 2>&1 \\| head -20$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

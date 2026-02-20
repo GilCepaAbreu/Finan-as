@@ -160,14 +160,16 @@ body {
 .modal-overlay {
   display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,0.5); z-index: 200;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px); flex-direction: column; align-items: flex-end;
+  justify-content: flex-end; pointer-events: none;
 }
-.modal-overlay.open { display: flex; align-items: flex-end; }
+.modal-overlay.open { display: flex; pointer-events: auto; }
 .modal-sheet {
   background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
-  width: 100%; padding: 24px 20px calc(20px + var(--safe-b));
+  width: 100%; max-width: 100%; padding: 24px 20px calc(20px + var(--safe-b));
   max-height: 92dvh; overflow-y: auto;
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto; position: relative; z-index: 201;
 }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: none; } }
 .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 99px; margin: 0 auto 20px; }
@@ -894,6 +896,13 @@ function openModal(id) {
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
 }
+// Prevent event propagation on modal-sheet
+document.querySelectorAll('.modal-sheet').forEach(sheet => {
+  sheet.addEventListener('click', function(e) {
+    e.stopPropagation();
+  });
+});
+// Close modal only when clicking on overlay background
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', function(e) {
     if (e.target === this) closeModal(this.id);
@@ -1027,7 +1036,9 @@ function deleteEntry(entryId) {
 
 /* ========== CALENDAR ========== */
 function openNewEvent() {
-  document.getElementById('evt-date').value = calSelectedDate;
+  if (!currentDetailProject) { toast('Selecione um projeto primeiro'); return; }
+  const todayDate = today();
+  document.getElementById('evt-date').value = calSelectedDate || todayDate;
   document.getElementById('evt-title').value = '';
   document.getElementById('evt-time').value = '';
   document.getElementById('evt-desc').value = '';
@@ -1037,17 +1048,19 @@ function openNewEvent() {
 
 function createEvent() {
   const proj = data.projects.find(p => p.id === currentDetailProject);
-  if (!proj) return;
+  if (!proj) { toast('Selecione um projeto primeiro'); return; }
   const title = document.getElementById('evt-title').value.trim();
   if (!title) { toast('Insere o título do evento'); return; }
   if (!proj.events) proj.events = [];
-  proj.events.push({
-    id: uid(), title,
+  const newEvent = {
+    id: uid(), 
+    title: title,
     date: document.getElementById('evt-date').value || today(),
-    time: document.getElementById('evt-time').value,
-    desc: document.getElementById('evt-desc').value.trim(),
-    color: document.getElementById('evt-color').value,
-  });
+    time: document.getElementById('evt-time').value || '',
+    desc: document.getElementById('evt-desc').value.trim() || '',
+    color: document.getElementById('evt-color').value || 'accent',
+  };
+  proj.events.push(newEvent);
   save();
   closeModal('modal-new-event');
   renderCalendar();
