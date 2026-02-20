@@ -1036,29 +1036,53 @@ function deleteEntry(entryId) {
 
 /* ========== CALENDAR ========== */
 function openNewEvent() {
+  // Verifica se há um projeto selecionado
   if (!currentDetailProject) {
     toast('Nenhum projeto selecionado');
     return;
   }
+  const proj = data.projects.find(p => p.id === currentDetailProject);
+  if (!proj) {
+    toast('Projeto não encontrado');
+    return;
+  }
+
   const todayDate = today();
+  // Define a data do evento como a data selecionada no calendário ou hoje
   document.getElementById('evt-date').value = calSelectedDate || todayDate;
+  // Limpa campos anteriores
   document.getElementById('evt-title').value = '';
   document.getElementById('evt-time').value = '';
   document.getElementById('evt-desc').value = '';
   document.getElementById('evt-color').value = 'accent';
+  
   openModal('modal-new-event');
 }
 
 function createEvent() {
   const proj = data.projects.find(p => p.id === currentDetailProject);
-  if (!proj) { toast('Selecione um projeto primeiro'); return; }
+  if (!proj) {
+    toast('Selecione um projeto primeiro');
+    return;
+  }
+  
   const title = document.getElementById('evt-title').value.trim();
-  if (!title) { toast('Insere o título do evento'); return; }
+  if (!title) {
+    toast('Insere o título do evento');
+    return;
+  }
+  
+  const eventDate = document.getElementById('evt-date').value;
+  if (!eventDate) {
+    toast('Selecione uma data');
+    return;
+  }
+  
+  // Inicializa array de eventos se necessário
   if (!proj.events) proj.events = [];
   
-  const eventDate = document.getElementById('evt-date').value || today();
   const newEvent = {
-    id: uid(), 
+    id: uid(),
     title: title,
     date: eventDate,
     time: document.getElementById('evt-time').value || '',
@@ -1068,20 +1092,22 @@ function createEvent() {
   
   proj.events.push(newEvent);
   save();
-  closeModal('modal-new-event');
   
-  // Limpar campos
+  // Fecha o modal e limpa os campos
+  closeModal('modal-new-event');
   document.getElementById('evt-title').value = '';
   document.getElementById('evt-time').value = '';
   document.getElementById('evt-desc').value = '';
   
-  // Ajustar visualização do calendário para a data do evento
+  // Atualiza as variáveis do calendário para a data do evento
   const [year, month, day] = eventDate.split('-').map(Number);
   calViewYear = year;
-  calViewMonth = month - 1; // mês zero-based
+  calViewMonth = month - 1; // mês base zero
   calSelectedDate = eventDate;
   
-  renderCalendar();
+  // Recarrega o conteúdo da aba atual (que é o calendário)
+  renderDetailTabContent();
+  
   toast('Evento criado!');
 }
 
