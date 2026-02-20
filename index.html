@@ -263,6 +263,19 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   <div id="detail-actions" style="padding:0 20px;margin-top:16px;display:flex;gap:10px"></div>
 </div>
 
+<!-- AGENDA GLOBAL -->
+<div class="page" id="page-agenda">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Agenda</div>
+      <div class="page-subtitle" id="agenda-subtitle">Todos os eventos</div>
+    </div>
+  </div>
+  <div id="agenda-calendar-wrap" style="padding:0 20px"></div>
+  <div class="section-label" id="agenda-upcoming-label">Próximos Eventos</div>
+  <div class="card" style="margin:0 20px 20px"><div id="agenda-upcoming-list"></div></div>
+</div>
+
 <!-- NAV -->
 <nav class="bottom-nav">
   <button class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard">
@@ -272,6 +285,10 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   <button class="nav-item" onclick="showPage('projects')" id="nav-projects">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
     Projetos
+  </button>
+  <button class="nav-item" onclick="showPage('agenda')" id="nav-agenda">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Agenda
   </button>
   <button class="nav-item" onclick="showPage('expenses')" id="nav-expenses">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
@@ -431,6 +448,33 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   </div>
 </div>
 
+<!-- MODAL: Eventos do Dia (Agenda Global) -->
+<div class="modal-overlay" id="modal-day-events">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modal-day-title">Eventos</div>
+    <div id="modal-day-list"></div>
+    <div style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('modal-day-events')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Detalhe de Evento (Agenda Global) -->
+<div class="modal-overlay" id="modal-event-detail">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <div id="evt-detail-dot" style="width:14px;height:14px;border-radius:50%;flex-shrink:0"></div>
+      <div class="modal-title" style="margin:0" id="evt-detail-title">Evento</div>
+    </div>
+    <div id="evt-detail-body"></div>
+    <div style="margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('modal-event-detail');openModal('modal-day-events')">← Voltar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ========== DATA LAYER ========== */
 const DB = {
@@ -522,6 +566,7 @@ function showPage(name) {
   if (name==='projects') renderProjects();
   if (name==='expenses') renderExpenses();
   if (name==='goals') renderGoals();
+  if (name==='agenda') renderAgenda();
 }
 
 function showProjectDetail(projId) {
@@ -1181,6 +1226,269 @@ function importData(event) {
 function escHtml(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ========== GLOBAL AGENDA ========== */
+let agendaYear = new Date().getFullYear();
+let agendaMonth = new Date().getMonth();
+let agendaSelectedDate = today();
+
+// Collect all events from all projects with project info attached
+function getAllEvents() {
+  const all = [];
+  data.projects.forEach(proj => {
+    (proj.events || []).forEach(ev => {
+      all.push({ ...ev, projectName: proj.name, projectId: proj.id });
+    });
+  });
+  return all;
+}
+
+function renderAgenda() {
+  const allEvents = getAllEvents();
+  const totalCount = allEvents.length;
+  document.getElementById('agenda-subtitle').textContent =
+    totalCount === 0 ? 'Sem eventos' :
+    totalCount === 1 ? '1 evento no total' :
+    `${totalCount} eventos no total`;
+
+  renderAgendaCalendar(allEvents);
+  renderAgendaUpcoming(allEvents);
+}
+
+function renderAgendaCalendar(allEvents) {
+  const wrap = document.getElementById('agenda-calendar-wrap');
+  const year = agendaYear, month = agendaMonth;
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevDays = new Date(year, month, 0).getDate();
+  const todayStr = today();
+
+  // Index events by date
+  const byDate = {};
+  allEvents.forEach(ev => {
+    if (!byDate[ev.date]) byDate[ev.date] = [];
+    byDate[ev.date].push(ev);
+  });
+
+  // Build cells
+  let cells = '';
+  const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+  for (let i = 0; i < totalCells; i++) {
+    let dayNum, dateStr, cls = 'cal-day';
+    if (i < firstDay) {
+      dayNum = prevDays - firstDay + i + 1;
+      const pm = month === 0 ? 12 : month;
+      const py = month === 0 ? year - 1 : year;
+      dateStr = `${py}-${String(pm).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+      cls += ' other-month';
+    } else if (i >= firstDay + daysInMonth) {
+      dayNum = i - firstDay - daysInMonth + 1;
+      const nm = month === 11 ? 1 : month + 2;
+      const ny = month === 11 ? year + 1 : year;
+      dateStr = `${ny}-${String(nm).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+      cls += ' other-month';
+    } else {
+      dayNum = i - firstDay + 1;
+      dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+      if (dateStr === todayStr) cls += ' today';
+      if (dateStr === agendaSelectedDate) cls += ' selected';
+    }
+    const dayEvs = byDate[dateStr] || [];
+    // Show up to 3 dots, deduplicate colors
+    const dots = dayEvs.slice(0,3).map(ev => `<div class="event-dot dot-${ev.color||'accent'}"></div>`).join('');
+    // Badge for > 3 events
+    const badge = dayEvs.length > 3
+      ? `<div style="position:absolute;top:3px;right:3px;background:var(--accent);color:var(--bg);font-size:8px;font-weight:700;border-radius:99px;min-width:14px;height:14px;display:flex;align-items:center;justify-content:center;padding:0 3px">${dayEvs.length}</div>`
+      : '';
+    cells += `<div class="${cls}" onclick="agendaSelectDay('${dateStr}')" style="position:relative">
+      ${dayNum}
+      ${dots ? `<div class="event-dots">${dots}</div>` : ''}
+      ${badge}
+    </div>`;
+  }
+
+  wrap.innerHTML = `
+  <div class="cal-header" style="padding:16px 0 12px">
+    <button class="cal-nav" onclick="agendaCalNav(-1)">‹</button>
+    <div class="cal-title">${MONTHS[month]} ${year}</div>
+    <button class="cal-nav" onclick="agendaCalNav(1)">›</button>
+  </div>
+  <div class="cal-grid">
+    ${DAYS_SHORT.map(d => `<div class="cal-day-name">${d}</div>`).join('')}
+    ${cells}
+  </div>`;
+}
+
+function renderAgendaUpcoming(allEvents) {
+  const list = document.getElementById('agenda-upcoming-list');
+  const label = document.getElementById('agenda-upcoming-label');
+  const todayStr = today();
+
+  const upcoming = [...allEvents]
+    .filter(ev => ev.date >= todayStr)
+    .sort((a,b) => (a.date+(a.time||'')).localeCompare(b.date+(b.time||'')));
+
+  const past = [...allEvents]
+    .filter(ev => ev.date < todayStr)
+    .sort((a,b) => (b.date+(b.time||'')).localeCompare(a.date+(a.time||'')));
+
+  const combined = [...upcoming, ...past];
+
+  label.textContent = upcoming.length > 0
+    ? `Próximos Eventos (${upcoming.length})`
+    : 'Todos os Eventos';
+
+  if (!combined.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">📅</div><p>Sem eventos em nenhum projeto.<br>Cria eventos nos projetos!</p></div>`;
+    return;
+  }
+
+  const grouped = {};
+  combined.forEach(ev => {
+    if (!grouped[ev.date]) grouped[ev.date] = [];
+    grouped[ev.date].push(ev);
+  });
+
+  list.innerHTML = Object.entries(grouped).map(([date, evs]) => {
+    const isPast = date < todayStr;
+    const isToday = date === todayStr;
+    const headerLabel = isToday ? 'Hoje' : formatDate(date);
+    return `
+    <div style="padding:10px 18px 4px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);background:var(--surface2)">
+      <span style="font-size:12px;font-weight:700;color:${isToday?'var(--accent)':isPast?'var(--text3)':'var(--text2)'}">${headerLabel}</span>
+      <span style="font-size:11px;color:var(--text3)">${evs.length} evento${evs.length>1?'s':''}</span>
+    </div>
+    ${evs.map(ev => `
+    <div class="event-item" style="cursor:pointer;opacity:${isPast?'0.65':'1'}" onclick="openEventDetail('${ev.id}','${ev.projectId}')">
+      <div class="event-color-dot" style="background:var(--${ev.color||'accent'})"></div>
+      <div class="event-info">
+        <div class="event-name">${escHtml(ev.title)}</div>
+        <div class="event-time">${escHtml(ev.projectName)}${ev.time?' · '+ev.time:''}${isPast?' <span style="color:var(--text3);font-size:10px">✓ passado</span>':''}</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>`).join('')}`;
+  }).join('');
+}
+
+function agendaSelectDay(dateStr) {
+  agendaSelectedDate = dateStr;
+  const parts = dateStr.split('-').map(Number);
+  agendaYear = parts[0];
+  agendaMonth = parts[1] - 1;
+
+  const allEvents = getAllEvents();
+  const dayEvents = allEvents.filter(ev => ev.date === dateStr);
+
+  // Re-render calendar to show selection
+  renderAgendaCalendar(allEvents);
+
+  // Open day modal
+  openDayEventsModal(dateStr, dayEvents);
+}
+
+function agendaCalNav(dir) {
+  agendaMonth += dir;
+  if (agendaMonth < 0) { agendaMonth = 11; agendaYear--; }
+  if (agendaMonth > 11) { agendaMonth = 0; agendaYear++; }
+  renderAgendaCalendar(getAllEvents());
+}
+
+function openDayEventsModal(dateStr, dayEvents) {
+  const todayStr = today();
+  const isToday = dateStr === todayStr;
+  document.getElementById('modal-day-title').textContent =
+    isToday ? `📅 Hoje — ${formatDate(dateStr)}` : `📅 ${formatDate(dateStr)}`;
+
+  const list = document.getElementById('modal-day-list');
+  if (!dayEvents.length) {
+    list.innerHTML = `<div class="empty-state" style="padding:32px 0"><div class="icon">📅</div><p>Sem eventos neste dia.</p></div>`;
+  } else {
+    const sorted = [...dayEvents].sort((a,b) => (a.time||'').localeCompare(b.time||''));
+    list.innerHTML = sorted.map(ev => `
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="closeModal('modal-day-events');openEventDetail('${ev.id}','${ev.projectId}')">
+      <div style="width:44px;height:44px;border-radius:12px;background:var(--accent-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <div style="width:14px;height:14px;border-radius:50%;background:var(--${ev.color||'accent'})"></div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:15px;font-weight:500">${escHtml(ev.title)}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${escHtml(ev.projectName)}${ev.time?' · '+ev.time:''}</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>`).join('');
+  }
+  document.getElementById('modal-day-events').classList.add('open');
+}
+
+function openEventDetail(evId, projId) {
+  const proj = data.projects.find(p => p.id === projId);
+  if (!proj) return;
+  const ev = (proj.events||[]).find(e => e.id === evId);
+  if (!ev) return;
+
+  // Set dot color
+  document.getElementById('evt-detail-dot').style.background = `var(--${ev.color||'accent'})`;
+  document.getElementById('evt-detail-title').textContent = ev.title;
+
+  const colorNames = {accent:'Azul',green:'Verde',red:'Vermelho',yellow:'Amarelo',purple:'Roxo'};
+
+  document.getElementById('evt-detail-body').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div style="width:36px;height:36px;background:var(--accent-bg);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">📁</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Projeto</div>
+          <div style="font-size:15px;font-weight:500">${escHtml(proj.name)}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div style="width:36px;height:36px;background:var(--accent-bg);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">📅</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Data</div>
+          <div style="font-size:15px;font-weight:500">${formatDate(ev.date)}</div>
+        </div>
+      </div>
+      ${ev.time ? `
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div style="width:36px;height:36px;background:var(--accent-bg);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">🕐</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Hora</div>
+          <div style="font-size:15px;font-weight:500">${ev.time}</div>
+        </div>
+      </div>` : ''}
+      ${ev.desc ? `
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div style="width:36px;height:36px;background:var(--accent-bg);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">📝</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Descrição</div>
+          <div style="font-size:15px;line-height:1.5">${escHtml(ev.desc)}</div>
+        </div>
+      </div>` : ''}
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div style="width:36px;height:36px;background:var(--${ev.color||'accent'}-bg,var(--accent-bg));border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <div style="width:12px;height:12px;border-radius:50%;background:var(--${ev.color||'accent'})"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Cor</div>
+          <div style="font-size:15px;font-weight:500">${colorNames[ev.color||'accent']||ev.color}</div>
+        </div>
+      </div>
+      <div style="margin-top:4px">
+        <button class="btn btn-danger" onclick="confirmDeleteGlobalEvent('${ev.id}','${proj.id}')">🗑️ Apagar Evento</button>
+      </div>
+    </div>`;
+
+  document.getElementById('modal-event-detail').classList.add('open');
+}
+
+function confirmDeleteGlobalEvent(evId, projId) {
+  showConfirm('Apagar este evento?', () => {
+    const proj = data.projects.find(p => p.id === projId);
+    if (proj) { proj.events = (proj.events||[]).filter(e => e.id !== evId); save(); }
+    closeModal('modal-event-detail');
+    renderAgenda();
+    toast('Evento apagado');
+  });
 }
 
 /* ========== INIT ========== */
