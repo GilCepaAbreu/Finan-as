@@ -461,11 +461,69 @@ body {
   .modal-overlay { max-width: 480px; left: 50%; transform: translateX(-50%); }
   .toast { max-width: 480px; }
 }
+
+/* ========== ACCESS CONTROL ========== */
+.access-control-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 9999;
+  overflow-y: auto;
+  animation: fadeIn 0.3s ease;
+}
+.access-control-overlay.active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.access-control-container {
+  padding: 40px 20px;
+  max-width: 400px;
+  text-align: center;
+}
+.access-control-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+.access-control-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+.access-control-message {
+  font-size: 15px;
+  color: var(--text2);
+  line-height: 1.6;
+  margin-bottom: 30px;
+}
+.access-control-info {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 20px;
+  text-align: left;
+}
 </style>
 </head>
 <body>
 
 <div class="app">
+
+  <!-- ======== ACCESS CONTROL ======== -->
+  <div class="access-control-overlay" id="accessControlOverlay">
+    <div class="access-control-container">
+      <div class="access-control-icon">🔒</div>
+      <div class="access-control-title" id="accessTitle">Acesso Restrito</div>
+      <div class="access-control-message" id="accessMessage">Este website apenas pode ser acedido através do seu telemóvel registado.</div>
+      <div class="access-control-info" id="accessInfo"></div>
+    </div>
+  </div>
+
   <!-- ======== PAGES ======== -->
 
   <!-- DASHBOARD -->
@@ -781,6 +839,111 @@ body {
 </div>
 
 <script>
+/* ========== ACCESS CONTROL SYSTEM ========== */
+(function() {
+  // Device detection
+  function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+           (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+  }
+
+  // Generate unique device fingerprint
+  function generateDeviceFingerprint() {
+    const ua = navigator.userAgent;
+    const screen = window.screen.width + 'x' + window.screen.height;
+    const lang = navigator.language;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const combined = ua + screen + lang + tz + navigator.hardwareConcurrency;
+    let hash = 0;
+    for (let i = 0; i < combined.length; i++) {
+      const char = combined.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  // Check access control
+  function checkAccessControl() {
+    const registeredDevice = localStorage.getItem('fn_registered_device');
+    const currentDeviceFp = generateDeviceFingerprint();
+    const currentDeviceType = isMobileDevice() ? 'mobile' : 'desktop';
+
+    // First visit - register the device if it's mobile
+    if (!registeredDevice) {
+      if (currentDeviceType === 'mobile') {
+        localStorage.setItem('fn_registered_device', currentDeviceFp);
+        localStorage.setItem('fn_device_type', currentDeviceType);
+        localStorage.setItem('fn_device_registered_at', new Date().toISOString());
+        return true;
+      } else {
+        // First access from desktop - block and show message
+        showAccessDenied('Primeiro Acesso', 'Por favor, aceda via telemóvel para registar este dispositivo.');
+        return false;
+      }
+    }
+
+    // Subsequent visits - check if it's the registered device
+    if (registeredDevice === currentDeviceFp) {
+      return true;
+    } else {
+      const registeredType = localStorage.getItem('fn_device_type') || 'desconhecido';
+      const isMobile = currentDeviceType === 'mobile';
+      
+      if (isMobile) {
+        showAccessDenied(
+          'Dispositivo Não Registado',
+          'Este telemóvel não está registado. Aceda apenas através do telemóvel registado.'
+        );
+      } else {
+        showAccessDenied(
+          'Acesso Negado',
+          'Este computador não tem permissão de acesso. Apenas o seu telemóvel registado pode aceder a esta aplicação.'
+        );
+      }
+      return false;
+    }
+  }
+
+  // Show access denied overlay
+  function showAccessDenied(title, message) {
+    const overlay = document.getElementById('accessControlOverlay');
+    const titleEl = document.getElementById('accessTitle');
+    const messageEl = document.getElementById('accessMessage');
+    const infoEl = document.getElementById('accessInfo');
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    
+    // Show device info for debugging
+    const deviceType = isMobileDevice() ? '📱 Telemóvel' : '💻 Computador';
+    const currentDate = new Date().toLocaleString('pt-PT');
+    infoEl.innerHTML = `<strong>ℹ️ Informações do Dispositivo:</strong><br>Tipo: ${deviceType}<br>Data/Hora: ${currentDate}`;
+    
+    overlay.classList.add('active');
+    
+    // Disable all app content
+    const app = document.querySelector('.app');
+    app.style.pointerEvents = 'none';
+    app.style.opacity = '0.3';
+  }
+
+  // Run access control check when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      if (!checkAccessControl()) {
+        // Access denied - prevent any app functionality
+        document.addEventListener('click', (e) => e.stopImmediatePropagation(), true);
+      }
+    });
+  } else {
+    if (!checkAccessControl()) {
+      // Access denied - prevent any app functionality
+      document.addEventListener('click', (e) => e.stopImmediatePropagation(), true);
+    }
+  }
+})();
+
 /* ========== DATA LAYER ========== */
 const DB = {
   get: (k, def = null) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } },
