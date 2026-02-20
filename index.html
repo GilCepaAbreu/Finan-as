@@ -1063,7 +1063,10 @@ function createEvent() {
   proj.events.push(newEvent);
   save();
   closeModal('modal-new-event');
-  renderDetailTabContent();
+  document.getElementById('evt-title').value = '';
+  document.getElementById('evt-time').value = '';
+  document.getElementById('evt-desc').value = '';
+  renderCalendar();
   toast('Evento criado!');
 }
 
