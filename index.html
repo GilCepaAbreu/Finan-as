@@ -1036,7 +1036,10 @@ function deleteEntry(entryId) {
 
 /* ========== CALENDAR ========== */
 function openNewEvent() {
-  if (!currentDetailProject) { toast('Selecione um projeto primeiro'); return; }
+  if (!currentDetailProject) {
+    toast('Nenhum projeto selecionado');
+    return;
+  }
   const todayDate = today();
   document.getElementById('evt-date').value = calSelectedDate || todayDate;
   document.getElementById('evt-title').value = '';
@@ -1052,20 +1055,32 @@ function createEvent() {
   const title = document.getElementById('evt-title').value.trim();
   if (!title) { toast('Insere o título do evento'); return; }
   if (!proj.events) proj.events = [];
+  
+  const eventDate = document.getElementById('evt-date').value || today();
   const newEvent = {
     id: uid(), 
     title: title,
-    date: document.getElementById('evt-date').value || today(),
+    date: eventDate,
     time: document.getElementById('evt-time').value || '',
     desc: document.getElementById('evt-desc').value.trim() || '',
     color: document.getElementById('evt-color').value || 'accent',
   };
+  
   proj.events.push(newEvent);
   save();
   closeModal('modal-new-event');
+  
+  // Limpar campos
   document.getElementById('evt-title').value = '';
   document.getElementById('evt-time').value = '';
   document.getElementById('evt-desc').value = '';
+  
+  // Ajustar visualização do calendário para a data do evento
+  const [year, month, day] = eventDate.split('-').map(Number);
+  calViewYear = year;
+  calViewMonth = month - 1; // mês zero-based
+  calSelectedDate = eventDate;
+  
   renderCalendar();
   toast('Evento criado!');
 }
